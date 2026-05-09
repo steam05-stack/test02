@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Piggy Run - Level Up</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f9ff;
+            font-family: 'Nunito', sans-serif;
+            touch-action: manipulation;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 400px;
+            background: linear-gradient(to bottom, #bae6fd 0%, #e0f2fe 100%);
+            overflow: hidden;
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+            border: 8px solid white;
+            transition: background 1s ease;
+        }
+
+        /* 숲 배경 장식 */
+        .forest-bg {
+            position: absolute;
+            bottom: 40px;
+            width: 100%;
+            height: 100px;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 100" preserveAspectRatio="none"><path d="M0 100 C 150 20, 350 20, 500 100 M 500 100 C 650 20, 850 20, 1000 100" fill="%234ade80" opacity="0.4"/></svg>');
+            background-repeat: repeat-x;
+            z-index: 1;
+        }
+
+        #ground {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 40px;
+            background-color: #4ade80;
+            z-index: 10;
+        }
+
+        #pig {
+            position: absolute;
+            bottom: 40px;
+            left: 80px;
+            width: 60px;
+            height: 60px;
+            font-size: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            transition: transform 0.1s;
+        }
+
+        .obstacle {
+            position: absolute;
+            bottom: 40px;
+            z-index: 15;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            pointer-events: auto;
+        }
+
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+            padding: 30px 50px;
+        }
+
+        .cloud {
+            position: absolute;
+            background: white;
+            border-radius: 50px;
+            opacity: 0.9;
+            z-index: 2;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+
+        /* 레벨 업 알림 효과 */
+        @keyframes levelUpPop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); color: #f59e0b; }
+            100% { transform: scale(1); }
+        }
+        .level-animate {
+            animation: levelUpPop 0.5s ease-out;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="forest-bg"></div>
+    <div id="ground"></div>
+    
+    <div id="pig">🐷</div>
+    
+    <div id="ui-layer">
+        <!-- 점프 UI -->
+        <div class="absolute top-6 left-6 glass-panel px-4 py-2 flex items-center gap-4">
+            <div>
+                <span class="text-sky-600 font-bold">점수: </span>
+                <span id="score-text" class="text-gray-800 font-black">0</span>
+            </div>
+            <div class="w-[2px] h-4 bg-gray-300"></div>
+            <div>
+                <span class="text-amber-500 font-bold">LV: </span>
+                <span id="level-text" class="text-gray-800 font-black">1</span>
+            </div>
+        </div>
+
+        <div id="message" class="glass-panel shadow-2xl">
+            <h1 class="text-4xl font-black mb-2 text-gray-800">Oops!</h1>
+            <p class="mb-6 text-gray-500 font-bold">최종 점수: <span id="final-score" class="text-sky-500">0</span></p>
+            <button onclick="resetGame()" class="bg-sky-500 hover:bg-sky-600 text-white text-lg font-black py-3 px-8 rounded-2xl transition duration-200 transform hover:scale-105 active:scale-95 shadow-lg">
+                다시 시작
+            </button>
+            <p class="mt-4 text-xs text-gray-400">Space 키를 눌러도 됩니다</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    const container = document.getElementById('game-container');
+    const pig = document.getElementById('pig');
+    const scoreText = document.getElementById('score-text');
+    const levelText = document.getElementById('level-text');
+    const message = document.getElementById('message');
+    const finalScoreDisplay = document.getElementById('final-score');
+
+    // 게임 설정
+    let isJumping = false;
+    let score = 0;
+    let level = 1;
+    let gameActive = true;
+    let gameSpeed = 7.5; // 초기 속도 상향 (6 -> 7.5)
+    const gravity = 0.9; // 중력 약간 더 강화 (0.8 -> 0.9)
+    let jumpVelocity = 0;
+    let pigY = 0;
+    let obstacles = [];
+    let clouds = [];
+    let lastTime = 0;
+    let obstacleTimer = 0;
+
+    function createCloud() {
+        const cloud = document.createElement('div');
+        cloud.className = 'cloud';
+        const w = Math.random() * 60 + 60;
+        const h = 30;
+        cloud.style.width = w + 'px';
+        cloud.style.height = h + 'px';
+        cloud.style.top = Math.random() * 120 + 40 + 'px';
+        cloud.style.left = '850px';
+        container.appendChild(cloud);
+        clouds.push({
+            element: cloud,
+            x: 850,
+            speed: Math.random() * 0.5 + 0.3
+        });
+    }
+
+    function createObstacle() {
+        const types = [
+            { emoji: '🌳', w: 45, h: 45, y: 0 },
+            { emoji: '🪵', w: 40, h: 30, y: 0 },
+            { emoji: '🐝', w: 35, h: 35, y: 65 },
+            { emoji: '🪨', w: 35, h: 30, y: 0 }
+        ];
+        
+        const type = types[Math.floor(Math.random() * types.length)];
+        const obs = document.createElement('div');
+        obs.className = 'obstacle text-center';
+        obs.innerHTML = type.emoji;
+        obs.style.fontSize = type.w + 'px';
+        obs.style.width = type.w + 'px';
+        obs.style.left = '850px';
+        obs.style.bottom = (40 + type.y) + 'px';
+        
+        container.appendChild(obs);
+        obstacles.push({
+            element: obs,
+            x: 850,
+            y: type.y,
+            width: type.w,
+            height: type.h
+        });
+    }
+
+    function jump() {
+        if (!isJumping && gameActive) {
+            isJumping = true;
+            jumpVelocity = 14.5; // 점프 힘 아주 살짝 보강
+            pig.style.transform = 'rotate(-10deg)';
+        }
+    }
+
+    function handleLevelUp() {
+        const newLevel = Math.floor(score / 100) + 1; // 100점마다 레벨업
+        if (newLevel > level) {
+            level = newLevel;
+            levelText.innerText = level;
+            levelText.classList.add('level-animate');
+            setTimeout(() => levelText.classList.remove('level-animate'), 500);
+            
+            // 레벨업 시 속도 추가 증가
+            gameSpeed += 0.8; 
+            
+            // 배경색 살짝 변경 효과 (노을 지는 느낌 등으로 변화 가능)
+            const hue = 200 - (level * 5); // 점점 진해지는 색상
+            container.style.background = `linear-gradient(to bottom, hsl(${hue}, 80%, 85%) 0%, hsl(${hue}, 70%, 95%) 100%)`;
+        }
+    }
+
+    function handleInput(e) {
+        if (e.code === 'Space' || e.type === 'touchstart') {
+            if (!gameActive) {
+                resetGame();
+            } else {
+                jump();
+            }
+            if (e.cancelable) e.preventDefault();
+        }
+    }
+
+    function update(time) {
+        if (!gameActive) return;
+
+        const deltaTime = time - lastTime || 0;
+        lastTime = time;
+
+        // 점프 로직
+        if (isJumping) {
+            pigY += jumpVelocity;
+            jumpVelocity -= gravity;
+            if (pigY <= 0) {
+                pigY = 0;
+                isJumping = false;
+                jumpVelocity = 0;
+                pig.style.transform = 'rotate(0deg)';
+            }
+            pig.style.bottom = (40 + pigY) + 'px';
+        }
+
+        // 장애물 생성 (레벨이 높을수록 더 자주 나올 수 있음)
+        obstacleTimer += deltaTime;
+        const spawnRate = Math.max(600, 1800 - (gameSpeed * 70));
+        if (obstacleTimer > spawnRate) {
+            createObstacle();
+            obstacleTimer = 0;
+        }
+
+        // 구름 생성
+        if (Math.random() < 0.003) createCloud();
+
+        // 장애물 처리
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            const obs = obstacles[i];
+            obs.x -= gameSpeed;
+            obs.element.style.left = obs.x + 'px';
+
+            if (obs.x < -60) {
+                container.removeChild(obs.element);
+                obstacles.splice(i, 1);
+                score += 10;
+                scoreText.innerText = score;
+                
+                // 기본 점진적 가속
+                gameSpeed += 0.08; 
+                
+                // 레벨업 체크
+                handleLevelUp();
+                continue;
+            }
+
+            // 충돌 감지
+            const pRect = { x: 95, y: 340 - pigY - 45, w: 30, h: 35 }; // 판정 더 정교하게 수정
+            const oRect = { x: obs.x + 8, y: 360 - obs.y - obs.height + 8, w: obs.width - 16, h: obs.height - 16 };
+
+            if (pRect.x < oRect.x + oRect.w &&
+                pRect.x + pRect.w > oRect.x &&
+                pRect.y < oRect.y + oRect.h &&
+                pRect.y + pRect.h > oRect.y) {
+                gameOver();
+            }
+        }
+
+        // 구름 처리
+        for (let i = clouds.length - 1; i >= 0; i--) {
+            const cloud = clouds[i];
+            cloud.x -= cloud.speed;
+            cloud.element.style.left = cloud.x + 'px';
+            if (cloud.x < -150) {
+                container.removeChild(cloud.element);
+                clouds.splice(i, 1);
+            }
+        }
+
+        requestAnimationFrame(update);
+    }
+
+    function gameOver() {
+        gameActive = false;
+        finalScoreDisplay.innerText = score;
+        message.style.display = 'block';
+        pig.innerHTML = '😵';
+    }
+
+    function resetGame() {
+        obstacles.forEach(obs => container.removeChild(obs.element));
+        clouds.forEach(c => container.removeChild(c.element));
+        obstacles = [];
+        clouds = [];
+        score = 0;
+        level = 1;
+        gameSpeed = 7.5;
+        pigY = 0;
+        isJumping = false;
+        gameActive = true;
+        obstacleTimer = 0;
+        scoreText.innerText = '0';
+        levelText.innerText = '1';
+        container.style.background = 'linear-gradient(to bottom, #bae6fd 0%, #e0f2fe 100%)';
+        message.style.display = 'none';
+        pig.style.bottom = '40px';
+        pig.innerHTML = '🐷';
+        lastTime = performance.now();
+        requestAnimationFrame(update);
+    }
+
+    window.addEventListener('keydown', handleInput);
+    container.addEventListener('touchstart', handleInput, {passive: false});
+
+    window.onload = () => {
+        lastTime = performance.now();
+        requestAnimationFrame(update);
+    };
+</script>
+
+</body>
+</html>
